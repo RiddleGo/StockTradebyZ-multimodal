@@ -1,0 +1,41 @@
+# review.yaml — 多模态图表复评统一配置（支持多厂商）
+# 相对路径基于项目根目录；用于 agent/run_review.py 或 各厂商 xxx_review.py
+
+# ─────────────────────────────────────────────────────────────────────────
+# 通用（与厂商无关）
+# ─────────────────────────────────────────────────────────────────────────
+candidates: data/candidates/candidates_latest.json
+kline_dir: data/kline
+output_dir: data/review
+prompt_path: agent/prompt.md
+request_delay: 5
+skip_existing: false
+suggest_min_score: 4.0
+# 复评结束后是否生成 HTML 报告（也可用 run_review.py --export-html）
+# export_html: false
+# 生成后是否在浏览器打开（需 export_html: true 或命令行 --export-html）
+# open_report: false
+
+# ─────────────────────────────────────────────────────────────────────────
+# 厂商与模型（必填）
+# provider: gemini | openai | anthropic | qwen | zhipu | moonshot | deepseek
+# ─────────────────────────────────────────────────────────────────────────
+provider: gemini
+
+# 厂商专属参数（按 provider 使用，api_key 一律用环境变量名）
+provider_options:
+  # 通用
+  model: gemini-2.0-flash
+  api_key_env: GEMINI_API_KEY
+  temperature: 0.2
+  max_tokens: 4096
+
+  # 仅 openai / 兼容 OpenAI 接口的厂商（qwen/zhipu/moonshot/deepseek 等）
+  # base_url: https://api.openai.com/v1
+  # base_url: https://dashscope.aliyuncs.com/compatible-mode/v1   # 通义
+  # base_url: https://open.bigmodel.cn/api/paas/v4              # 智谱
+  # base_url: https://api.moonshot.cn/v1                         # 月之暗面
+  # base_url: https://api.deepseek.com/v1                         # DeepSeek
+
+  # 仅 anthropic（Claude）
+  # api_version: 2024-01-01
