@@ -11,10 +11,11 @@ export_review_html.py
 """
 
 import argparse
-import json
 import base64
-from pathlib import Path
+import json
 import sys
+from datetime import datetime
+from pathlib import Path
 
 try:
     from review_config import load_review_config
@@ -39,12 +40,76 @@ def _img_to_data_uri(path: Path) -> str:
     return f"data:{mime};base64,{b64}"
 
 
+# 单股详情 JSON 字段中文标签与信号类型映射
+_SCORE_LABELS = {
+    "trend_structure": "趋势结构",
+    "price_position": "价格位置",
+    "volume_behavior": "量价行为",
+    "previous_abnormal_move": "前期异动",
+}
+_SIGNAL_LABELS = {
+    "trend_start": "主升启动",
+    "rebound": "跌后反弹",
+    "distribution_risk": "出货风险",
+}
+_VERDICT_LABELS = {"PASS": "通过", "WATCH": "观察", "FAIL": "不通过"}
+
+
+def _render_detail_html(detail_data: dict) -> str:
+    """将单股评分 JSON 渲染为结构化、易读的 HTML 卡片。"""
+    if not detail_data or not isinstance(detail_data, dict):
+        return ""
+    scores = detail_data.get("scores") or {}
+    total = detail_data.get("total_score")
+    signal_type = detail_data.get("signal_type", "")
+    verdict = detail_data.get("verdict", "")
+    comment = detail_data.get("comment", "")
+    parts = []
+
+    # 维度得分：进度条 + 分数
+    parts.append('<div class="detail-panel"><div class="detail-section"><span class="detail-section-title">维度得分</span><div class="detail-scores">')
+    for key, label in _SCORE_LABELS.items():
+        val = scores.get(key)
+        if val is None:
+            continue
+        pct = min(100, max(0, int(val) * 20))
+        parts.append(f'<div class="detail-score-item"><span class="detail-score-label">{_escape(label)}</span><div class="detail-score-bar"><div class="detail-score-fill" style="width:{pct}%"></div></div><span class="detail-score-num">{val}</span></div>')
+    if total is not None:
+        parts.append(f'<div class="detail-score-item detail-total"><span class="detail-score-label">总分</span><span class="detail-score-num accent">{total}</span></div>')
+    parts.append("</div></div>")
+
+    # 推理过程（若有）
+    reason_keys = [
+        ("trend_reasoning", "趋势推理"),
+        ("position_reasoning", "位置推理"),
+        ("volume_reasoning", "量价推理"),
+        ("abnormal_move_reasoning", "异动推理"),
+        ("signal_reasoning", "信号推理"),
+    ]
+    for key, title in reason_keys:
+        text = detail_data.get(key)
+        if not text or not str(text).strip():
+            continue
+        parts.append(f'<div class="detail-section"><span class="detail-section-title">{_escape(title)}</span><p class="detail-reasoning">{_escape(str(text).strip())}</p></div>')
+
+    # 结论行：信号 + 研判 + 点评
+    parts.append('<div class="detail-section detail-conclusion">')
+    parts.append(f'<span class="detail-badge signal">{_escape(_SIGNAL_LABELS.get(signal_type, signal_type))}</span>')
+    parts.append(f'<span class="detail-badge verdict">{_escape(_VERDICT_LABELS.get(verdict, verdict))}</span>')
+    if comment:
+        parts.append(f'<p class="detail-comment">{_escape(comment)}</p>')
+    parts.append("</div></div>")
+    return "".join(parts)
+
+
 def build_html(
     suggestion: dict,
     out_dir: Path,
     kline_dir: Path,
     embed_images: bool = True,
+    generated_at: str | None = None,
 ) -> str:
+    generated_at = generated_at or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     pick_date = suggestion.get("date", "")
     min_score = suggestion.get("min_score_threshold", 0)
     total = suggestion.get("total_reviewed", 0)
@@ -75,13 +140,15 @@ def build_html(
         score_str = f"{score:.1f}" if isinstance(score, (int, float)) else str(score)
         img_tag = f'<img src="{img_src}" alt="{code}" class="kline-img"/>' if img_src else "—"
 
-        detail = ""
+        detail_rendered = ""
+        detail_fallback = ""
         detail_file = out_dir / f"{code}.json"
         if detail_file.exists():
             try:
                 with open(detail_file, encoding="utf-8") as f:
                     detail_data = json.load(f)
-                detail = json.dumps(detail_data, ensure_ascii=False, indent=2)
+                detail_rendered = _render_detail_html(detail_data)
+                detail_fallback = _escape(json.dumps(detail_data, ensure_ascii=False, indent=2))
             except Exception:
                 pass
 
@@ -93,10 +160,16 @@ def build_html(
             "signal_type": signal_type,
             "comment": comment,
             "img_tag": img_tag,
-            "detail_json": detail,
+            "detail_rendered": detail_rendered,
+            "detail_fallback": detail_fallback,
         })
 
     excluded_str = "、".join(excluded) if excluded else "无"
+    codes_js = json.dumps([r["code"] for r in rows], ensure_ascii=False)
+    csv_rows_js = json.dumps([
+        [r["rank"], r["code"], r["score_str"], r["signal_type"], r["verdict"], r["comment"]]
+        for r in rows
+    ], ensure_ascii=False)
 
     html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -109,23 +182,52 @@ def build_html(
     * {{ box-sizing: border-box; }}
     body {{ font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 1.5rem; line-height: 1.5; }}
     h1 {{ font-size: 1.5rem; margin: 0 0 0.5rem; }}
-    .meta {{ color: var(--muted); font-size: 0.9rem; margin-bottom: 1.5rem; }}
+    .meta {{ color: var(--muted); font-size: 0.9rem; margin-bottom: 0.5rem; }}
+    .toolbar {{ margin-bottom: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }}
+    .toolbar button {{ padding: 0.4rem 0.8rem; border-radius: 6px; border: 1px solid var(--border); background: var(--card); color: var(--text); cursor: pointer; font-size: 0.9rem; }}
+    .toolbar button:hover {{ background: #252528; }}
+    .toolbar button.primary {{ background: var(--accent); color: #0f0f12; border-color: var(--accent); }}
     table {{ width: 100%; border-collapse: collapse; background: var(--card); border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }}
     th, td {{ padding: 0.6rem 0.8rem; text-align: left; border-bottom: 1px solid var(--border); }}
     th {{ background: #252528; color: var(--muted); font-weight: 600; font-size: 0.85rem; }}
     tr:last-child td {{ border-bottom: none; }}
-    tr:hover {{ background: #222225; }}
+    tr.data-row {{ cursor: pointer; }}
+    tr.data-row:hover {{ background: #222225; }}
+    tr.detail-row td {{ background: #1e1e22; padding: 0.8rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; }}
+    .detail-panel {{ max-width: 720px; }}
+    .detail-section {{ margin-bottom: 0.75rem; }}
+    .detail-section:last-child {{ margin-bottom: 0; }}
+    .detail-section-title {{ display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.05em; }}
+    .detail-scores {{ display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; }}
+    .detail-score-item {{ display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; }}
+    .detail-score-item.detail-total {{ margin-left: 0.5rem; }}
+    .detail-score-label {{ min-width: 4.2em; color: var(--muted); }}
+    .detail-score-bar {{ width: 64px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }}
+    .detail-score-fill {{ height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.2s; }}
+    .detail-score-num {{ font-weight: 600; min-width: 1.2em; }}
+    .detail-score-num.accent {{ color: var(--accent); }}
+    .detail-reasoning {{ margin: 0; font-size: 0.85rem; line-height: 1.5; color: var(--text); }}
+    .detail-conclusion {{ display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }}
+    .detail-badge {{ font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: 600; }}
+    .detail-badge.signal {{ background: #1e3a2f; color: #4ade80; border: 1px solid #22c55e; }}
+    .detail-badge.verdict {{ background: #252528; color: var(--text); border: 1px solid var(--border); }}
+    .detail-comment {{ margin: 0.35rem 0 0; width: 100%; font-size: 0.9rem; color: var(--text); line-height: 1.5; }}
+    .detail-content {{ font-size: 0.8rem; color: var(--muted); white-space: pre-wrap; max-height: 12em; overflow-y: auto; font-family: ui-monospace, monospace; }}
     .code {{ font-weight: 600; font-family: ui-monospace, monospace; }}
     .score {{ color: var(--accent); font-weight: 600; }}
     .verdict {{ font-size: 0.9rem; }}
     .kline-img {{ max-width: 320px; max-height: 200px; display: block; border-radius: 4px; border: 1px solid var(--border); }}
-    .detail {{ font-size: 0.8rem; color: var(--muted); white-space: pre-wrap; max-height: 8em; overflow-y: auto; }}
     .excluded {{ margin-top: 1rem; padding: 0.8rem; background: var(--card); border-radius: 8px; border: 1px solid var(--border); font-size: 0.9rem; color: var(--muted); }}
+    .disclaimer {{ margin-top: 1.5rem; padding: 0.8rem; font-size: 0.8rem; color: var(--muted); border-top: 1px solid var(--border); }}
   </style>
 </head>
 <body>
   <h1>选股复评报告</h1>
-  <p class="meta">选股日期：{pick_date} · 评审总数：{total} · 推荐门槛：score ≥ {min_score} · 达标：{len(recs)} 只</p>
+  <p class="meta">选股日期：{pick_date} · 评审总数：{total} · 推荐门槛：score ≥ {min_score} · 达标：{len(recs)} 只 · 生成时间：{generated_at}</p>
+  <div class="toolbar">
+    <button type="button" class="primary" onclick="copyCodes()">复制推荐代码</button>
+    <button type="button" onclick="exportCsv()">导出 CSV</button>
+  </div>
   <table>
     <thead>
       <tr>
@@ -142,7 +244,7 @@ def build_html(
 """
     for r in rows:
         html += f"""
-      <tr>
+      <tr class="data-row" data-code="{_escape(r["code"])}" onclick="toggleDetail(this)">
         <td>{r["rank"]}</td>
         <td class="code">{r["code"]}</td>
         <td class="score">{r["score_str"]}</td>
@@ -151,10 +253,33 @@ def build_html(
         <td>{r["img_tag"]}</td>
         <td>{_escape(r["comment"])}</td>
       </tr>"""
+        if r["detail_rendered"] or r["detail_fallback"]:
+            content = r["detail_rendered"] if r["detail_rendered"] else f'<div class="detail-content">{r["detail_fallback"]}</div>'
+            html += f"""
+      <tr class="detail-row" style="display:none;"><td colspan="7"><div class="detail-panel-wrap">{content}</div></td></tr>"""
     html += """
     </tbody>
   </table>
   <div class="excluded">未达门槛代码：""" + excluded_str + """</div>
+  <p class="disclaimer">本报告由程序自动生成，结果仅供参考，不构成任何投资建议。投资有风险，决策需谨慎。</p>
+  <script>
+    var RECOMMENDATION_CODES = """ + codes_js + """;
+    var CSV_ROWS = """ + csv_rows_js + """;
+    function copyCodes() {
+      var text = RECOMMENDATION_CODES.join('\\n');
+      navigator.clipboard.writeText(text).then(function() { alert('已复制 ' + RECOMMENDATION_CODES.length + ' 只代码到剪贴板'); }, function() { prompt('请手动复制', text); });
+    }
+    function exportCsv() {
+      var header = '排名,代码,总分,信号,研判,备注\\n';
+      var body = CSV_ROWS.map(function(r) { return r.map(function(c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(','); }).join('\\n');
+      var blob = new Blob(['\\ufeff' + header + body], { type: 'text/csv;charset=utf-8' });
+      var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'recommendations.csv'; a.click(); URL.revokeObjectURL(a.href);
+    }
+    function toggleDetail(tr) {
+      var next = tr.nextElementSibling;
+      if (next && next.classList.contains('detail-row')) { next.style.display = next.style.display === 'none' ? '' : 'none'; }
+    }
+  </script>
 </body>
 </html>
 """
@@ -225,7 +350,8 @@ def main():
         suggestion = json.load(f)
 
     embed_images = not args.no_embed
-    html = build_html(suggestion, out_dir, kline_dir, embed_images=embed_images)
+    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    html = build_html(suggestion, out_dir, kline_dir, embed_images=embed_images, generated_at=generated_at)
 
     out_html = args.output or (out_dir / "report.html")
     out_html = Path(out_html)
@@ -249,7 +375,8 @@ def export_to_html(
     """供复评流程或其它脚本调用：根据 suggestion.json 生成 report.html。"""
     with open(suggestion_path, encoding="utf-8") as f:
         suggestion = json.load(f)
-    html = build_html(suggestion, out_dir, kline_dir, embed_images=embed_images)
+    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    html = build_html(suggestion, out_dir, kline_dir, embed_images=embed_images, generated_at=generated_at)
     out_html = output_path or (out_dir / "report.html")
     out_html = Path(out_html)
     out_html.write_text(html, encoding="utf-8")

@@ -23,6 +23,7 @@ COMMON_DEFAULTS: Dict[str, Any] = {
     "suggest_min_score": 4.0,
     "export_html": True,
     "open_report": True,
+    "retry_on_fail": 1,
 }
 
 # 各厂商 provider_options 默认

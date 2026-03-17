@@ -82,7 +82,10 @@ class BaseReviewer:
         candidates_data = self.load_candidates(Path(self.config["candidates"]))
         pick_date: str = candidates_data["pick_date"]
         candidates: List[dict] = candidates_data["candidates"]
-        print(f"[INFO] pick_date={pick_date}，候选股票数={len(candidates)}")
+        delay = self.config.get("request_delay", 5)
+        max_retries = self.config.get("retry_on_fail", 1)
+        total = len(candidates)
+        print(f"[INFO] pick_date={pick_date}，候选股票数={total}")
 
         out_dir = self.output_dir / pick_date
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -95,7 +98,7 @@ class BaseReviewer:
             out_file = out_dir / f"{code}.json"
 
             if self.config.get("skip_existing", False) and out_file.exists():
-                print(f"[{i}/{len(candidates)}] {code} — 已存在，跳过。")
+                print(f"[{i}/{total}] {code} — 已存在，跳过。")
                 with open(out_file, encoding="utf-8") as f:
                     result = json.load(f)
                 all_results.append(result)
@@ -103,25 +106,40 @@ class BaseReviewer:
 
             day_chart = self.find_chart_images(pick_date, code)
             if day_chart is None:
-                print(f"[{i}/{len(candidates)}] {code} — 缺少日线图，跳过。")
+                print(f"[{i}/{total}] {code} — 缺少日线图，跳过。")
                 failed_codes.append(code)
                 continue
 
-            print(f"[{i}/{len(candidates)}] {code} — 正在分析 ...", end=" ", flush=True)
-            try:
-                result = self.review_stock(code=code, day_chart=day_chart, prompt=self.prompt)
+            remaining = total - i
+            if remaining > 0:
+                est_min = (remaining * (delay + 3)) // 60
+                print(f"[{i}/{total}] {code} — 正在分析（预计剩余约 {est_min} 分钟）...", end=" ", flush=True)
+            else:
+                print(f"[{i}/{total}] {code} — 正在分析 ...", end=" ", flush=True)
+
+            result = None
+            for attempt in range(max_retries + 1):
+                try:
+                    result = self.review_stock(code=code, day_chart=day_chart, prompt=self.prompt)
+                    break
+                except Exception as e:
+                    if attempt < max_retries:
+                        print(f"重试 {attempt + 1}/{max_retries} ...", end=" ", flush=True)
+                        time.sleep(delay)
+                    else:
+                        print(f"失败 — {e}")
+                        failed_codes.append(code)
+                        result = None
+            if result is not None:
                 with open(out_file, "w", encoding="utf-8") as f:
                     json.dump(result, f, ensure_ascii=False, indent=2)
                 all_results.append(result)
                 verdict = result.get("verdict", "?")
                 score = result.get("total_score", "?")
                 print(f"完成 — verdict={verdict}, score={score}")
-            except Exception as e:
-                print(f"失败 — {e}")
-                failed_codes.append(code)
 
-            if i < len(candidates):
-                time.sleep(self.config.get("request_delay", 5))
+            if i < total:
+                time.sleep(delay)
 
         print(f"\n[INFO] 评分完成：成功 {len(all_results)} 支，失败/跳过 {len(failed_codes)} 支")
         if failed_codes:

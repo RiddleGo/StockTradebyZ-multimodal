@@ -11,10 +11,11 @@ prompt_path: agent/prompt.md
 request_delay: 5
 skip_existing: false
 suggest_min_score: 4.0
-# 复评结束后是否生成 HTML 报告（也可用 run_review.py --export-html）
+# 复评结束后是否生成 HTML 报告；默认 true，运行结束自动生成并打开
 # export_html: false
-# 生成后是否在浏览器打开（需 export_html: true 或命令行 --export-html）
 # open_report: false
+# 单股调用失败时重试次数（默认 1，即最多重试 1 次）
+# retry_on_fail: 1
 
 # ─────────────────────────────────────────────────────────────────────────
 # 厂商与模型（必填）
