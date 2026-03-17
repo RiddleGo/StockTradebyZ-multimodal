@@ -1,0 +1,11 @@
+# 多模态复评 — 依赖（按需安装对应厂商 SDK）
+# 基础（必装）
+PyYAML>=6.0
+
+# 多厂商 SDK（按 config/review.yaml 中的 provider 任选其一安装）
+# Gemini
+google-genai>=1.0.0
+# OpenAI / 通义 / 智谱 / 月之暗面 / DeepSeek（兼容 OpenAI 接口）
+openai>=1.0.0
+# Claude
+anthropic>=0.39.0

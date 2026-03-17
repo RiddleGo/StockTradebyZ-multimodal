@@ -178,22 +178,25 @@ def build_html(
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>选股复评报告 · {pick_date}</title>
   <style>
-    :root {{ --bg: #0f0f12; --card: #1a1a1f; --text: #e4e4e7; --muted: #71717a; --accent: #22c55e; --border: #27272a; }}
-    * {{ box-sizing: border-box; }}
+    :root, body.theme-dark {{ --bg: #0f0f12; --card: #1a1a1f; --text: #e4e4e7; --muted: #71717a; --accent: #22c55e; --border: #27272a; --hover: #222225; --th-bg: #252528; --detail-bg: #1e1e22; }}
+    body.theme-light {{ --bg: #f4f4f5; --card: #fff; --text: #18181b; --muted: #71717a; --accent: #16a34a; --border: #e4e4e7; --hover: #e4e4e7; --th-bg: #f4f4f5; --detail-bg: #fafafa; }}
     body {{ font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 1.5rem; line-height: 1.5; }}
+    * {{ box-sizing: border-box; }}
     h1 {{ font-size: 1.5rem; margin: 0 0 0.5rem; }}
     .meta {{ color: var(--muted); font-size: 0.9rem; margin-bottom: 0.5rem; }}
     .toolbar {{ margin-bottom: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }}
     .toolbar button {{ padding: 0.4rem 0.8rem; border-radius: 6px; border: 1px solid var(--border); background: var(--card); color: var(--text); cursor: pointer; font-size: 0.9rem; }}
     .toolbar button:hover {{ background: #252528; }}
-    .toolbar button.primary {{ background: var(--accent); color: #0f0f12; border-color: var(--accent); }}
-    table {{ width: 100%; border-collapse: collapse; background: var(--card); border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }}
+    .toolbar button.primary {{ background: var(--accent); color: #fff; border-color: var(--accent); }}
+    .toolbar button.theme-btn {{ margin-left: auto; }}
+    .table-wrap {{ overflow-x: auto; margin-bottom: 1rem; -webkit-overflow-scrolling: touch; }}
+    table {{ width: 100%; min-width: 640px; border-collapse: collapse; background: var(--card); border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }}
     th, td {{ padding: 0.6rem 0.8rem; text-align: left; border-bottom: 1px solid var(--border); }}
-    th {{ background: #252528; color: var(--muted); font-weight: 600; font-size: 0.85rem; }}
+    th {{ background: var(--th-bg); color: var(--muted); font-weight: 600; font-size: 0.85rem; }}
     tr:last-child td {{ border-bottom: none; }}
     tr.data-row {{ cursor: pointer; }}
-    tr.data-row:hover {{ background: #222225; }}
-    tr.detail-row td {{ background: #1e1e22; padding: 0.8rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; }}
+    tr.data-row:hover {{ background: var(--hover); }}
+    tr.detail-row td {{ background: var(--detail-bg); padding: 0.8rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; }}
     .detail-panel {{ max-width: 720px; }}
     .detail-section {{ margin-bottom: 0.75rem; }}
     .detail-section:last-child {{ margin-bottom: 0; }}
@@ -210,7 +213,7 @@ def build_html(
     .detail-conclusion {{ display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }}
     .detail-badge {{ font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: 600; }}
     .detail-badge.signal {{ background: #1e3a2f; color: #4ade80; border: 1px solid #22c55e; }}
-    .detail-badge.verdict {{ background: #252528; color: var(--text); border: 1px solid var(--border); }}
+    .detail-badge.verdict {{ background: var(--th-bg); color: var(--text); border: 1px solid var(--border); }}
     .detail-comment {{ margin: 0.35rem 0 0; width: 100%; font-size: 0.9rem; color: var(--text); line-height: 1.5; }}
     .detail-content {{ font-size: 0.8rem; color: var(--muted); white-space: pre-wrap; max-height: 12em; overflow-y: auto; font-family: ui-monospace, monospace; }}
     .code {{ font-weight: 600; font-family: ui-monospace, monospace; }}
@@ -221,13 +224,15 @@ def build_html(
     .disclaimer {{ margin-top: 1.5rem; padding: 0.8rem; font-size: 0.8rem; color: var(--muted); border-top: 1px solid var(--border); }}
   </style>
 </head>
-<body>
+<body class="theme-dark">
   <h1>选股复评报告</h1>
   <p class="meta">选股日期：{pick_date} · 评审总数：{total} · 推荐门槛：score ≥ {min_score} · 达标：{len(recs)} 只 · 生成时间：{generated_at}</p>
   <div class="toolbar">
     <button type="button" class="primary" onclick="copyCodes()">复制推荐代码</button>
     <button type="button" onclick="exportCsv()">导出 CSV</button>
+    <button type="button" class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="切换浅色/深色">浅色</button>
   </div>
+  <div class="table-wrap">
   <table>
     <thead>
       <tr>
@@ -260,6 +265,7 @@ def build_html(
     html += """
     </tbody>
   </table>
+  </div>
   <div class="excluded">未达门槛代码：""" + excluded_str + """</div>
   <p class="disclaimer">本报告由程序自动生成，结果仅供参考，不构成任何投资建议。投资有风险，决策需谨慎。</p>
   <script>
@@ -279,6 +285,29 @@ def build_html(
       var next = tr.nextElementSibling;
       if (next && next.classList.contains('detail-row')) { next.style.display = next.style.display === 'none' ? '' : 'none'; }
     }
+    function toggleTheme() {
+      var body = document.body;
+      var btn = document.getElementById('themeBtn');
+      if (body.classList.contains('theme-light')) {
+        body.classList.remove('theme-light');
+        body.classList.add('theme-dark');
+        btn.textContent = '浅色';
+        try { localStorage.setItem('reportTheme', 'dark'); } catch(e) {}
+      } else {
+        body.classList.remove('theme-dark');
+        body.classList.add('theme-light');
+        btn.textContent = '深色';
+        try { localStorage.setItem('reportTheme', 'light'); } catch(e) {}
+      }
+    }
+    (function() {
+      var btn = document.getElementById('themeBtn');
+      try {
+        var t = localStorage.getItem('reportTheme');
+        if (t === 'light') { document.body.classList.remove('theme-dark'); document.body.classList.add('theme-light'); btn.textContent = '深色'; }
+        else { btn.textContent = '浅色'; }
+      } catch(e) { btn.textContent = '浅色'; }
+    })();
   </script>
 </body>
 </html>
