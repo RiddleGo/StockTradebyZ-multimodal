@@ -1,15 +1,93 @@
 # 多模态图表复评 — 多厂商统一配置
 
-本目录是对 [StockTradebyZ](https://github.com/SebastienZh/StockTradebyZ) 中「Gemini 看图打分」的抽象：**一份统一配置、多厂商可切换**，便于支持市面上所有多模态模型。
+本目录是对 [StockTradebyZ](https://github.com/SebastienZh/StockTradebyZ) 中「Gemini 看图打分」的抽象：**一份统一配置、多厂商可切换**，并已补全**完整选股流水线**（拉 K 线 → 量化初选 → 导出 K 线图 → 复评 → 推荐），可独立运行。
+
+- **一键运行**：[完整流程（一键运行）](#完整流程一键运行)
+- **API 与配置**：[配置与 API 清单（必读）](#配置与-api-清单必读)
+- **仅跑复评**：[使用文档（仅复评）](#使用文档仅复评--快速开始)
 
 ---
 
-## 使用文档（快速开始）
+## 完整流程（一键运行）
+
+本仓库包含 5 步流水线，在项目根目录执行：
+
+```bash
+pip install -r requirements.txt
+python run_all.py
+```
+
+| 步骤 | 说明 | 前置 |
+|------|------|------|
+| 1 | 拉取 K 线（Tushare） | 设置环境变量 `TUSHARE_TOKEN` |
+| 2 | 量化初选（生成候选列表） | 需 `pipeline/stocklist.csv`（见下） |
+| 3 | 导出候选 K 线图（日线 JPG） | 步骤 1、2 已跑通 |
+| 4 | 多模态图表复评（生成 HTML 报告） | 配置 `config/review.yaml` 及对应 API Key |
+| 5 | 打印推荐购买列表 | 读 `data/review/<日期>/suggestion.json` |
+
+- 跳过步骤 1（已有 K 线）：`python run_all.py --skip-fetch`
+- 从第 N 步开始：`python run_all.py --start-from 2`
+
+### 前置文件
+
+- **pipeline/stocklist.csv**：股票列表。从 [StockTradebyZ](https://github.com/SebastienZh/StockTradebyZ) 的 `pipeline/stocklist.csv` 复制到本仓库 `pipeline/` 下，否则步骤 1 会报错。
+- **agent/prompt.md**：复评提示词，需从原仓库复制到本仓库 `agent/` 下或自备。
+
+---
+
+## 配置与 API 清单（必读）
+
+全流程涉及的环境变量和配置文件集中如下，**按步骤配置即可**。
+
+### 环境变量（API Key 等）
+
+| 变量名 | 用途 | 使用步骤 | 获取方式 |
+|--------|------|----------|----------|
+| `TUSHARE_TOKEN` | Tushare 行情接口 | 步骤 1 拉 K 线 | [Tushare 官网](https://tushare.pro) 注册后获取 |
+| `GEMINI_API_KEY` | Google Gemini 多模态 | 步骤 4 复评（当 `provider: gemini`） | Google AI Studio |
+| `OPENAI_API_KEY` | OpenAI GPT-4o 等 | 步骤 4（当 `provider: openai`） | OpenAI 控制台 |
+| `ANTHROPIC_API_KEY` | Claude | 步骤 4（当 `provider: anthropic`） | Anthropic 控制台 |
+| `DASHSCOPE_API_KEY` | 通义千问 | 步骤 4（当 `provider: qwen`） | 阿里云 DashScope |
+| `ZHIPU_API_KEY` | 智谱 GLM | 步骤 4（当 `provider: zhipu`） | 智谱开放平台 |
+| `MOONSHOT_API_KEY` | 月之暗面 | 步骤 4（当 `provider: moonshot`） | 月之暗面开放平台 |
+| `DEEPSEEK_API_KEY` | DeepSeek | 步骤 4（当 `provider: deepseek`） | DeepSeek 开放平台 |
+
+步骤 4 使用的具体变量名由 **`config/review.yaml`** 里 `provider_options.api_key_env` 指定，上表为常用示例。设置后需**重新打开终端**生效。
+
+**Windows PowerShell 示例（当前用户）：**
+```powershell
+[Environment]::SetEnvironmentVariable("TUSHARE_TOKEN", "你的TushareToken", "User")
+[Environment]::SetEnvironmentVariable("GEMINI_API_KEY", "你的GeminiKey", "User")
+```
+
+### 配置文件一览
+
+| 文件 | 步骤 | 必填/可选 | 说明 |
+|------|------|-----------|------|
+| `config/fetch_kline.yaml` | 1 | 必填 | 日期范围 `start`/`end`、`stocklist` 路径、`out` 输出目录、`workers` 并发数 |
+| `config/rules_preselect.yaml` | 2 | 可选 | 初选规则：`global.data_dir`/`output_dir`、B1/砖型图开关与参数 |
+| `config/review.yaml` | 4 | 必填 | 复评入口：`provider`、`provider_options.model`、`api_key_env`；通义/智谱等需填 `base_url` |
+
+**复评 API 配置（config/review.yaml 提炼）：**
+
+- 选厂商：`provider: gemini | openai | anthropic | qwen | zhipu | moonshot | deepseek`
+- 必填：`provider_options.model`、`provider_options.api_key_env`（环境变量名）
+- 国内/兼容 OpenAI 的厂商需在 `provider_options` 下增加 `base_url`（见该文件内注释）
+
+其余项（`candidates`、`kline_dir`、`prompt_path`、`request_delay`、`suggest_min_score` 等）已有默认值，一般无需修改。
+
+项目根目录提供 **`.env.example`**，列出全部环境变量名，可复制后填入本地值作备忘（本程序从系统环境变量读取，不自动加载 `.env` 文件）。
+
+---
+
+## 使用文档（仅复评 / 快速开始）
+
+若只运行**步骤 4（复评）**，可忽略完整流程，按下面操作。
 
 ### 前置条件
 
 - 已安装 Python 3.9+
-- 已完成 [StockTradebyZ](https://github.com/SebastienZh/StockTradebyZ) 的**步骤 1～3**：拉取 K 线、量化初选、导出候选 K 线图（即本复评是第 4 步）
+- 已有**步骤 1～3** 的结果：`data/raw/*.csv`、`data/candidates/candidates_latest.json`、`data/kline/<日期>/*.jpg`（可从原 StockTradebyZ 跑出，或本仓库执行步骤 1～3）
 - 已获取任意一家多模态 API 的 Key（如 Gemini / OpenAI / 通义 / 智谱等）
 
 ### 第一步：合并到 StockTradebyZ 项目

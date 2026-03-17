@@ -1,0 +1,41 @@
+# rules_preselect.yaml — 量化初选规则（pipeline/select_stock.py 读取）
+global:
+  data_dir: "./data/raw"
+  output_dir: "./data/candidates"
+  top_m: 5000
+  n_turnover_days: 43
+  min_bars_buffer: 10
+b1:
+  enabled: true
+  zx_m1: 14
+  zx_m2: 28
+  zx_m3: 57
+  zx_m4: 114
+  j_threshold: 15.0
+  j_q_threshold: 0.10
+brick:
+  enabled: false
+  n: 8
+  m1: 3
+  m2: 12
+  m3: 12
+  t: 8
+  shift1: 92
+  shift2: 114
+  sma_w1: 1
+  sma_w2: 1
+  sma_w3: 1
+  daily_return_threshold: 0.2
+  brick_growth_ratio: 0.5
+  min_prior_green_bars: 1
+  zxdq_ratio: 1.47
+  zxdq_span: 10
+  require_zxdq_gt_zxdkx: true
+  zxdkx_m1: 14
+  zxdkx_m2: 28
+  zxdkx_m3: 57
+  zxdkx_m4: 114
+  require_weekly_ma_bull: true
+  wma_short: 5
+  wma_mid: 10
+  wma_long: 20

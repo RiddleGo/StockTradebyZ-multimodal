@@ -1,0 +1,13 @@
+# ============================================================
+# fetch_kline.py 配置文件
+# ============================================================
+
+start: "20190101"
+end: "today"
+stocklist: "./pipeline/stocklist.csv"
+exclude_boards:
+  - gem
+  - star
+  - bj
+out: "./data/raw"
+workers: 8

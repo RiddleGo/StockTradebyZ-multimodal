@@ -1,0 +1,36 @@
+# dashboard.yaml — Streamlit / 导出图表配置
+server:
+  port: 8501
+  title: "AgentTrader · 量化初选看板"
+paths:
+  candidates_latest: "data/candidates/candidates_latest.json"
+  raw_data_dir: "data/raw"
+chart:
+  default_bars: 120
+  zx_lines:
+    zxdq_span: 10
+    m1: 14
+    m2: 28
+    m3: 57
+    m4: 114
+  weekly_ma_windows: [5, 10, 20, 60]
+  weekly_ma_colors:
+    5: "#e67e22"
+    10: "#27ae60"
+    20: "#2980b9"
+    60: "#8e44ad"
+  volume_up_color: "rgba(220,53,69,0.7)"
+  volume_down_color: "rgba(40,167,69,0.7)"
+  brick:
+    n: 8
+    m1: 3
+    m2: 12
+    m3: 12
+    t: 8
+    shift1: 92
+    shift2: 114
+    sma_w1: 1
+    sma_w2: 1
+    sma_w3: 1
+list:
+  page_size: 20
